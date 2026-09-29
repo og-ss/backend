@@ -7,17 +7,20 @@ app.use(express.json());
 // 从环境变量读取 Railway 自动提供的 DATABASE_URL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  sslmode: 'require' // Railway 的数据库需要 SSL
+  ssl: {
+    rejectUnauthorized: false   // Railway 的 PostgreSQL 需要 SSL
+  }
 });
 
 // 应用启动时创建数据表
-pool.query(`
-  CREATE TABLE IF NOT EXISTS todos (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    completed BOOLEAN DEFAULT FALSE
-  )
-`).then(() => console.log('Todos table ready'));
+// 可选：测试连接
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('数据库连接失败:', err.stack);
+  } else {
+    console.log('数据库连接成功:', res.rows[0].now);
+  }
+});
 
 // 获取待办列表
 app.get('/api/todos', async (req, res) => {

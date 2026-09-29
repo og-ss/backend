@@ -43,6 +43,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+
 // 使用 Railway 提供的端口（非常重要！）
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

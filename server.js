@@ -1,43 +1,47 @@
 const express = require('express');
-const cors = require('cors');
+const { Pool } = require('pg'); // 引入 pg 模块
+
 const app = express();
 app.use(express.json());
 
-// CORS 配置（按环境变量走，没配就默认全开）
-const origins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : '*';
-app.use(cors({ origin: origins }));
+// 从环境变量读取 Railway 自动提供的 DATABASE_URL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  sslmode: 'require' // Railway 的数据库需要 SSL
+});
 
-// 健康检查接口（Railway 需要）
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// 应用启动时创建数据表
+pool.query(`
+  CREATE TABLE IF NOT EXISTS todos (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    completed BOOLEAN DEFAULT FALSE
+  )
+`).then(() => console.log('Todos table ready'));
 
-// 内存版 Todo 接口
-let todos = [];
-let nextId = 1;
+// 获取待办列表
+app.get('/api/todos', async (req, res) => {
+  const result = await pool.query('SELECT * FROM todos');
+  res.json(result.rows);
+});
 
-app.get('/api/todos', (req, res) => res.json(todos));
-app.post('/api/todos', (req, res) => {
+// 新增待办
+app.post('/api/todos', async (req, res) => {
   const { title } = req.body;
-  if (!title) return res.status(400).json({ message: 'title required' });
-  const t = { id: nextId++, title, done: false };
-  todos.push(t);
-  res.status(201).json(t);
-});
-app.put('/api/todos/:id', (req, res) => {
-  const t = todos.find(x => x.id === Number(req.params.id));
-  if (!t) return res.status(404).json({ message: 'not found' });
-  if (req.body.title !== undefined) t.title = req.body.title;
-  if (req.body.done !== undefined) t.done = req.body.done;
-  res.json(t);
-});
-app.delete('/api/todos/:id', (req, res) => {
-  const i = todos.findIndex(x => x.id === Number(req.params.id));
-  if (i === -1) return res.status(404).json({ message: 'not found' });
-  todos.splice(i, 1);
-  res.json({ message: 'deleted' });
+  const result = await pool.query(
+    'INSERT INTO todos (title) VALUES ($1) RETURNING *',
+    [title]
+  );
+  res.json(result.rows[0]);
 });
 
-// 监听端口（必须读环境变量，不能写死 3000）
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log('running on', PORT));
+// 健康检查接口
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// 使用 Railway 提供的端口（非常重要！）
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
